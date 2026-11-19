@@ -1,0 +1,15 @@
+{
+  "name": "deepseek-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A thin streaming proxy for the DeepSeek API with a server-side key.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "start:env": "node --env-file=.env src/index.mjs",
+    "test": "node --test"
+  }
+}
