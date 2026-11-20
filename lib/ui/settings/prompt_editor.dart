@@ -66,6 +66,7 @@ class _PromptEditorState extends State<_PromptEditor> {
             Text(strings.promptEditorDescription),
             const SizedBox(height: 14),
             TextField(
+              scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
               key: const Key('system-prompt-text'),
               controller: _prompt,
               enabled: !_saving,

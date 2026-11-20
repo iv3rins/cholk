@@ -279,10 +279,18 @@ void main() {
         await chat.sendMessage('Build on the earlier replies', []),
         isTrue,
       );
-      for (final call in fixture.gateway.calls.skip(2)) {
+      for (final (call, own, other) in [
+        (fixture.gateway.calls[2], 'Evidence', '「Tutor」说：Tutorial'),
+        (fixture.gateway.calls[3], 'Tutorial', '「Analyst」说：Evidence'),
+      ]) {
         expect(
           call.request.history.whereType<AssistantMessage>().single.text,
-          allOf(contains('[Analyst]\nEvidence'), contains('[Tutor]\nTutorial')),
+          own,
+        );
+        expect(call.request.question.content, contains(other));
+        expect(
+          call.request.question.content,
+          endsWith('Build on the earlier replies'),
         );
       }
       final third = fixture.gateway.calls[2];
@@ -381,7 +389,7 @@ void main() {
     expect(deliveries, 2);
   });
 
-  test('later turns share all labeled public replies, including with the main model', () async {
+  test('later turns pass members’ replies to the main model as attributed user text', () async {
     final fixture = _Fixture();
     final chat = fixture.chat;
     await fixture.selectTeam();
@@ -409,11 +417,13 @@ void main() {
     expect(await chat.sendMessage('Second question', []), isTrue);
     final legacy = fixture.gateway.calls[2];
     expect(legacy.configuration.apiKey, 'legacy-key');
-    expect(legacy.request.history, hasLength(2));
-    final shared = legacy.request.history.last as AssistantMessage;
-    expect(shared.text, '[Analyst]\nAlpha\n\n[Tutor]\nBeta');
-    expect(shared.blocks.every((block) => block is TextBlock), isTrue);
-    expect(shared.latestReminder, isNull);
+    expect(legacy.request.history, isEmpty);
+    expect(
+      legacy.request.question.content,
+      '用户说：First question\n\n「Analyst」说：Alpha\n\n「Tutor」说：Beta\n\n'
+      'Second question',
+    );
+    expect(legacy.request.question.content, isNot(contains('PRIVATE')));
     final finished = fixture.finished();
     await legacy.complete('Legacy response');
     await finished;
@@ -523,12 +533,15 @@ void main() {
         (first.request.history.first as UserMessage).files.single.id,
         image.id,
       );
-      final projected = second.request.history.first as UserMessage;
-      expect(projected.files, isEmpty);
-      expect(projected.content, contains('photo.png'));
+      expect(second.request.history, isEmpty);
+      expect(second.request.question.files, isEmpty);
       expect(
-        (second.request.history.last as AssistantMessage).text,
-        contains('There is a sunrise.'),
+        second.request.question.content,
+        allOf(
+          contains('photo.png'),
+          contains('「Analyst」说：There is a sunrise.'),
+          endsWith('Explain the last answer'),
+        ),
       );
       expect(
         (chat.activeSession!.visibleMessages.first as UserMessage)
@@ -546,6 +559,26 @@ void main() {
       expect(fixture.replies.last.participantName, 'Tutor');
     },
   );
+
+  test('members are told not to echo others and their own name tag is dropped', () async {
+    final fixture = _Fixture();
+    final chat = fixture.chat;
+    await fixture.selectTeam();
+    await chat.sendMessage('Question', []);
+    final [first, second] = fixture.gateway.calls;
+    expect(first.request.systemPrompt, contains('不要复述或引用他们的消息'));
+    expect(first.request.systemPrompt, contains('[Analyst]'));
+    final finished = fixture.finished();
+    await Future.wait([
+      first.complete('[Analyst]\nMy point'),
+      second.complete('Tutor：Your point'),
+    ]);
+    await finished;
+    expect(fixture.replies.map((reply) => reply.text), [
+      'My point',
+      'Your point',
+    ]);
+  });
 }
 
 const _first = ChatParticipant(

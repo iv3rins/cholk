@@ -13,6 +13,7 @@ import '../../theme/lineism.dart';
 import '../participants/participant_avatar.dart';
 import 'group_message.dart';
 import 'markdown_view.dart';
+import 'selection_feedback.dart';
 
 class AssistantMessageTile extends StatefulWidget {
   const AssistantMessageTile({
@@ -103,6 +104,7 @@ class _AssistantMessageTileState extends State<AssistantMessageTile> {
       if (hasAnswer)
         MarkdownView(
           data: view.answerMarkdown!,
+          selectable: !isTouch,
           onCitation: (index) => _showSources(context, view.sources, index),
         ),
       if (reply.stopReason == StopReason.refusal)
@@ -138,21 +140,31 @@ class _AssistantMessageTileState extends State<AssistantMessageTile> {
           onTap: () => _showSources(context, view.sources, null),
         ),
     ];
+    final body = GestureDetector(
+      key: const ValueKey('assistant-message-body'),
+      behavior: HitTestBehavior.translucent,
+      onLongPress: messageText.isEmpty
+          ? null
+          : () => showMessageActions(context, messageText),
+      child: widget.groupChat
+          ? GroupBubble(
+              child: content.isEmpty
+                  ? Text(waiting ? strings.waiting : strings.noReplyText)
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: content,
+                    ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: content,
+            ),
+    );
     final message = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         header,
-        if (widget.groupChat)
-          GroupBubble(
-            child: content.isEmpty
-                ? Text(waiting ? strings.waiting : strings.noReplyText)
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: content,
-                  ),
-          )
-        else
-          ...content,
+        body,
         const SizedBox(height: 6),
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -244,7 +256,10 @@ class _AssistantMessageTileState extends State<AssistantMessageTile> {
       FindInPageStep() => _FindStepView(step: step),
       TextStep() => Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        child: MarkdownView(data: step.markdown),
+        child: MarkdownView(
+          data: step.markdown,
+          selectable: !isTouchPlatform(context),
+        ),
       ),
     };
   }
@@ -444,7 +459,13 @@ class _ThinkingStepViewState extends State<_ThinkingStepView> {
             firstChild: const SizedBox(width: double.infinity),
             secondChild: Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Opacity(opacity: 0.78, child: MarkdownView(data: text)),
+              child: Opacity(
+                opacity: 0.78,
+                child: MarkdownView(
+                  data: text,
+                  selectable: !isTouchPlatform(context),
+                ),
+              ),
             ),
           ),
         ],

@@ -566,9 +566,17 @@ void main() {
         whileRunning: () => gateway.calls.last.complete('补充'),
       );
 
-      final shared = gateway.calls[3].request.history
-          .whereType<AssistantMessage>();
-      expect(shared.map((reply) => reply.text).join(), contains('我在'));
+      // 阿澈 sees only its own replies as assistant turns; 小满's reply is
+      // passed on as attributed user text so it is not mistaken for its own.
+      final request = gateway.calls[3].request;
+      final own = request.history.whereType<AssistantMessage>();
+      expect(own.map((reply) => reply.text).join(), contains('在的'));
+      expect(own.map((reply) => reply.text).join(), isNot(contains('我在')));
+      final heard = [
+        ...request.history.whereType<UserMessage>().map((m) => m.content),
+        request.question.content,
+      ].join();
+      expect(heard, contains('「小满」说：我在'));
       expect(chat.activeSession!.members.map((member) => member.name), [
         '小满',
         '阿澈',

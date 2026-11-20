@@ -27,6 +27,18 @@ class ChatGateway {
         .verifyApiKey(configuration.apiKey.trim());
   }
 
+  /// Lists models for a draft whose model name may still be empty.
+  Future<List<String>> listModels(ModelConfiguration configuration) {
+    configuration = _validated(
+      configuration.copyWith(
+        model: configuration.model.trim().isEmpty ? '-' : configuration.model,
+      ),
+    );
+    return _client
+        .forOrigin(configuration.normalizedOrigin)
+        .listModels(configuration.apiKey);
+  }
+
   Stream<ApiEvent> stream({
     required ModelConfiguration configuration,
     required ChatRequest request,

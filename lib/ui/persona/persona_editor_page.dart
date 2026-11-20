@@ -119,6 +119,11 @@ class _PersonaEditorPageState extends State<PersonaEditorPage> {
     final zh = scope.strings.isZh;
     final advanced = scope.controller.settings.isAdvancedMode;
     final palette = scope.palette;
+    // Keep multi-line fields short while the keyboard is up so the card and
+    // the field being edited both stay on screen.
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final maxLines = typing ? 6 : 10;
+    const scrollPadding = EdgeInsets.fromLTRB(20, 20, 20, 96);
     return PopScope(
       canPop: !_saving,
       child: Scaffold(
@@ -132,6 +137,7 @@ class _PersonaEditorPageState extends State<PersonaEditorPage> {
         body: SafeArea(
           top: false,
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 660),
@@ -159,6 +165,7 @@ class _PersonaEditorPageState extends State<PersonaEditorPage> {
                           controller: _name,
                           enabled: !_saving,
                           maxLength: 80,
+                          scrollPadding: scrollPadding,
                           decoration: InputDecoration(
                             labelText: zh ? '名称' : 'Name',
                             counterText: '',
@@ -175,8 +182,9 @@ class _PersonaEditorPageState extends State<PersonaEditorPage> {
                           key: const Key('persona-prompt'),
                           controller: _prompt,
                           enabled: !_saving,
-                          minLines: 5,
-                          maxLines: 10,
+                          minLines: typing ? 3 : 5,
+                          maxLines: maxLines,
+                          scrollPadding: scrollPadding,
                           decoration: InputDecoration(
                             labelText: zh ? '系统提示词' : 'System prompt',
                             alignLabelWithHint: true,
@@ -201,8 +209,9 @@ class _PersonaEditorPageState extends State<PersonaEditorPage> {
                             key: const Key('persona-workflow'),
                             controller: _workflow,
                             enabled: !_saving,
-                            minLines: 5,
-                            maxLines: 10,
+                            minLines: typing ? 3 : 5,
+                            maxLines: maxLines,
+                            scrollPadding: scrollPadding,
                             decoration: InputDecoration(
                               labelText: 'Workflow',
                               alignLabelWithHint: true,

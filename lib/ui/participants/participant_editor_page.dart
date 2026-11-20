@@ -136,10 +136,15 @@ class _ParticipantEditorPageState extends State<ParticipantEditorPage> {
     final title = editing
         ? (zh ? '编辑参与模型' : 'Edit model')
         : (zh ? '添加参与模型' : 'Add model');
+    // While the keyboard is up, the fixed action bar would sit on top of it
+    // and squeeze the form; hide it so the focused field keeps the space.
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
+    const scrollPadding = EdgeInsets.fromLTRB(20, 20, 20, 96);
     final content = SafeArea(
       top: false,
       child: SingleChildScrollView(
         controller: _scrollController,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 660),
@@ -205,6 +210,7 @@ class _ParticipantEditorPageState extends State<ParticipantEditorPage> {
                           controller: _name,
                           enabled: !_saving,
                           maxLength: 80,
+                          scrollPadding: scrollPadding,
                           decoration: InputDecoration(
                             labelText: zh ? '显示名称' : 'Display name',
                             counterText: '',
@@ -250,7 +256,8 @@ class _ParticipantEditorPageState extends State<ParticipantEditorPage> {
                           controller: _prompt,
                           enabled: !_saving,
                           minLines: 3,
-                          maxLines: 6,
+                          maxLines: typing ? 4 : 6,
+                          scrollPadding: scrollPadding,
                           decoration: InputDecoration(
                             labelText: zh
                                 ? '系统提示词（可选）'
@@ -325,7 +332,7 @@ class _ParticipantEditorPageState extends State<ParticipantEditorPage> {
         body: Column(
           children: [
             Expanded(child: content),
-            actions,
+            if (!typing) actions,
           ],
         ),
       ),

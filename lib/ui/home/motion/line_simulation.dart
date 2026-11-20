@@ -3,16 +3,27 @@ import 'dart:ui';
 
 import 'package:forge2d/forge2d.dart';
 
-enum LineFigure { coil, web }
+enum LineFigure { coil, web, strands }
+
+/// A hanging cord: [cord] runs from its fixed pin to the eye it carries, and
+/// [body] is a second point held stiffly below the eye, so the hung piece turns
+/// as one.
+typedef LineStrand = ({List<Offset> cord, Offset body});
 
 /// Positions live in one flat plane, independent of screen size and pixel ratio.
 class LineSimulation {
-  LineSimulation(this.figure) {
+  LineSimulation(
+    this.figure, {
+    List<LineStrand> strands = const [],
+    this.bounds = const Rect.fromLTRB(-4.3, -3.05, 4.3, 3.05),
+  }) {
     switch (figure) {
       case LineFigure.coil:
         _buildCoil();
       case LineFigure.web:
         _buildWeb();
+      case LineFigure.strands:
+        _buildStrands(strands);
     }
   }
 
@@ -22,11 +33,13 @@ class LineSimulation {
   static const coilNodes = 49;
 
   final LineFigure figure;
+  final Rect bounds;
   final _world = World();
   late final _ground = _world.createBody(BodyDef());
   final _nodes = <Body>[];
   final _rests = <Vector2>[];
   final _mobile = <int>[];
+  final _strandBodies = <int>[];
   MouseJoint? _grab;
   Offset _grabOffset = Offset.zero;
   int? grabbedNode;
@@ -39,6 +52,12 @@ class LineSimulation {
   Offset rest(int index) => Offset(_rests[index].x, _rests[index].y);
   static int webNode(int ring, int spoke) =>
       1 + ring * webSpokes + spoke % webSpokes;
+
+  /// Nodes of strand `s`: its pin is [strandStart], its eye is one before
+  /// [strandBody].
+  int strandStart(int strand) =>
+      strand == 0 ? 0 : _strandBodies[strand - 1] + 1;
+  int strandBody(int strand) => _strandBodies[strand];
 
   void _node(Vector2 position, {bool pinned = false}) {
     if (!pinned) _mobile.add(_nodes.length);
@@ -102,6 +121,24 @@ class LineSimulation {
     }
   }
 
+  void _buildStrands(List<LineStrand> strands) {
+    for (final strand in strands) {
+      final start = _nodes.length;
+      for (var i = 0; i < strand.cord.length; i++) {
+        final p = strand.cord[i];
+        _node(Vector2(p.dx, p.dy), pinned: i == 0);
+        if (i > 0) _spring(start + i - 1, start + i, 11, .35);
+        if (i > 1) _spring(start + i - 2, start + i, 6, .38);
+      }
+      final eye = _nodes.length - 1;
+      _node(Vector2(strand.body.dx, strand.body.dy));
+      _spring(eye, eye + 1, 14, .7);
+      // Bracing from the cord keeps the hung piece from spinning on its eye.
+      _spring(eye - 1, eye + 1, 8, .5);
+      _strandBodies.add(eye + 1);
+    }
+  }
+
   int? _nearestNode(Offset point, double radius) {
     var nearest = -1;
     var distance = radius * radius;
@@ -141,7 +178,10 @@ class LineSimulation {
   void move(Offset point) {
     final target = point + _grabOffset;
     _grab?.setTarget(
-      Vector2(target.dx.clamp(-4.3, 4.3), target.dy.clamp(-3.05, 3.05)),
+      Vector2(
+        target.dx.clamp(bounds.left, bounds.right),
+        target.dy.clamp(bounds.top, bounds.bottom),
+      ),
     );
   }
 
@@ -152,17 +192,26 @@ class LineSimulation {
     grabbedNode = null;
   }
 
-  void tug() => _nodes[focusNode].applyLinearImpulse(Vector2(9, -5));
+  void tug() => push(focusNode, const Offset(9, -5));
+
+  void push(int index, Offset impulse) =>
+      _nodes[index].applyLinearImpulse(Vector2(impulse.dx, impulse.dy));
 
   void setGravity(Offset gravity) =>
       _world.gravity.setValues(gravity.dx, gravity.dy);
 
   void step() {
-    if (figure == LineFigure.coil) {
-      // A flat spiral has a preferred curvature. A weak return force models
-      // that memory while the distance joints carry tension between turns.
+    // A flat spiral has a preferred curvature, and a hung cord a resting drape.
+    // A weak return force models that memory while the distance joints carry
+    // tension between nodes.
+    final memory = switch (figure) {
+      LineFigure.coil => 33.0,
+      LineFigure.strands => 30.0,
+      LineFigure.web => 0.0,
+    };
+    if (memory > 0) {
       for (final i in _mobile) {
-        _nodes[i].applyForce((_rests[i] - _nodes[i].position)..scale(33));
+        _nodes[i].applyForce((_rests[i] - _nodes[i].position)..scale(memory));
       }
     }
     _world.stepDt(timeStep);

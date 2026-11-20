@@ -5,16 +5,24 @@ import 'state/chat_controller.dart';
 import 'theme/app_theme.dart';
 import 'ui/app_scope.dart';
 import 'ui/home/main_screen.dart';
+import 'ui/settings/disclaimer_dialog.dart';
 
 export 'ui/app_scope.dart' show AppScope;
 
 class DeepSeekChatApp extends StatelessWidget {
-  const DeepSeekChatApp({super.key, required this.controller});
+  const DeepSeekChatApp({
+    super.key,
+    required this.controller,
+    this.showDisclaimer = false,
+  });
 
   static final _lightTheme = buildTheme(lightPalette);
   static final _darkTheme = buildTheme(darkPalette);
 
   final ChatController controller;
+
+  /// Shows the first-launch disclaimer over the home screen.
+  final bool showDisclaimer;
 
   ThemeMode get _themeMode => switch (controller.settings.themePreference) {
     'light' => ThemeMode.light,
@@ -39,7 +47,9 @@ class DeepSeekChatApp extends StatelessWidget {
               : const Locale('en', 'US'),
           supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          home: const MainScreen(),
+          home: showDisclaimer
+              ? const DisclaimerGate(child: MainScreen())
+              : const MainScreen(),
           builder: (context, child) {
             final palette = Theme.of(context).brightness == Brightness.dark
                 ? darkPalette

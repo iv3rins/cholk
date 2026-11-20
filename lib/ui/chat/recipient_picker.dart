@@ -604,6 +604,7 @@ class _RecipientSheetState extends State<_RecipientSheet> {
               ),
               Expanded(
                 child: TextField(
+                  scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                   key: const Key('recipient-member-name'),
                   controller: draft._name,
                   autofocus: !editing,
@@ -655,6 +656,7 @@ class _RecipientSheetState extends State<_RecipientSheet> {
             children: [
               Expanded(
                 child: TextField(
+                  scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                   key: const Key('recipient-member-prompt'),
                   controller: draft._prompt,
                   minLines: 1,

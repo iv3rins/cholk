@@ -9,6 +9,7 @@ import '../../theme/lineism.dart';
 import '../participants/participant_avatar.dart';
 import 'group_message.dart';
 import 'local_image.dart';
+import 'selection_feedback.dart';
 
 class UserMessageTile extends StatefulWidget {
   const UserMessageTile({
@@ -55,9 +56,19 @@ class _UserMessageTileState extends State<UserMessageTile> {
           _AttachmentPreview(file: file, palette: palette),
       ],
     );
-    final text = SelectableText(
-      message.content,
-      style: TextStyle(fontSize: 16, height: 1.5, color: palette.textPrimary),
+    final textStyle = TextStyle(
+      fontSize: 16,
+      height: 1.5,
+      color: palette.textPrimary,
+    );
+    // On touch, a plain Text lets the bubble's long-press menu win the gesture.
+    final Widget text = GestureDetector(
+      key: const ValueKey('user-message-text'),
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => showMessageActions(context, message.content),
+      child: isTouch
+          ? Text(message.content, style: textStyle)
+          : SelectableText(message.content, style: textStyle),
     );
     final row = Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -203,6 +214,7 @@ class _UserMessageTileState extends State<UserMessageTile> {
               ),
               const SizedBox(height: 10),
               TextField(
+                scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                 controller: controller,
                 autofocus: true,
                 minLines: 2,

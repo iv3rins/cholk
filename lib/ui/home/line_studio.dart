@@ -1,12 +1,10 @@
-import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show DragStartBehavior;
-import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_scope.dart';
 import 'motion/device_tilt.dart';
+import 'motion/line_motion.dart';
 import 'motion/line_simulation.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/lineism.dart';
@@ -22,153 +20,18 @@ class LineStudio extends StatefulWidget {
 }
 
 class _LineStudioState extends State<LineStudio>
-    with SingleTickerProviderStateMixin {
-  LineSimulation _simulation = LineSimulation(LineFigure.coil);
-  final _repaint = ValueNotifier<int>(0);
-  late final Ticker _ticker = createTicker(_tick);
-  Duration _previous = Duration.zero;
-  double _accumulator = 0;
-  double _quiet = 0;
-  bool _reduced = false;
-  bool _visible = false;
-  bool _grabbing = false;
-  bool _tiltOn = false;
-  int _tiltRequest = 0;
-  Timer? _tiltTimeout;
-  StreamSubscription<Offset>? _sensor;
-  Offset? _neutral;
-  Offset _gravity = Offset.zero;
+    with SingleTickerProviderStateMixin, LineMotion<LineStudio> {
+  LineFigure _figure = LineFigure.coil;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final wasVisible = _visible;
-    final wasReduced = _reduced;
-    _reduced = MediaQuery.disableAnimationsOf(context);
-    _visible =
-        (ModalRoute.isCurrentOf(context) ?? true) &&
-        TickerMode.valuesOf(context).enabled;
-    if (!_visible || _reduced) {
-      _stopTilt();
-      _simulation.release();
-      _grabbing = false;
-      _ticker.stop();
-      if (_reduced && !wasReduced) {
-        _simulation = LineSimulation(_simulation.figure);
-      }
-    } else if (!wasVisible || wasReduced) {
-      _wake();
-    }
-  }
-
-  @override
-  void dispose() {
-    _stopTilt();
-    _ticker.dispose();
-    _repaint.dispose();
-    super.dispose();
-  }
-
-  void _wake() {
-    if (_reduced || !_visible) return;
-    _quiet = 0;
-    if (_ticker.isActive) return;
-    _previous = Duration.zero;
-    _accumulator = 0;
-    _ticker.start();
-  }
-
-  void _tick(Duration elapsed) {
-    // Bound catch-up after a resize, a missed frame, or a resumed tab.
-    final delta = (elapsed - _previous).inMicroseconds / 1000000;
-    _previous = elapsed;
-    _accumulator += delta.clamp(0, .05);
-    var stepped = false;
-    while (_accumulator >= LineSimulation.timeStep) {
-      _simulation.step();
-      _accumulator -= LineSimulation.timeStep;
-      stepped = true;
-    }
-    if (stepped) _repaint.value++;
-    _quiet = _simulation.dragging || _simulation.moving ? 0 : _quiet + delta;
-    if (_quiet > .25) _ticker.stop();
-  }
+  LineSimulation buildSimulation() => LineSimulation(_figure);
 
   void _changeFigure(LineFigure figure) {
-    if (_simulation.figure == figure) return;
+    if (_figure == figure) return;
     setState(() {
-      _simulation = LineSimulation(figure)..setGravity(_gravity);
-      _grabbing = false;
+      _figure = figure;
+      replaceSimulation(buildSimulation());
     });
-    if (_gravity != Offset.zero) _wake();
-  }
-
-  void _stopTilt() {
-    _tiltRequest++;
-    _tiltTimeout?.cancel();
-    _tiltTimeout = null;
-    final sensor = _sensor;
-    _sensor = null;
-    if (sensor != null) unawaited(sensor.cancel());
-    _tiltOn = false;
-    _neutral = null;
-    _gravity = Offset.zero;
-    _simulation.setGravity(Offset.zero);
-  }
-
-  void _tiltUnavailable() {
-    setState(_stopTilt);
-    _wake();
-    showToast(context, AppScope.of(context).strings.tiltUnavailable);
-  }
-
-  Future<void> _toggleTilt() async {
-    if (_tiltOn) {
-      setState(_stopTilt);
-      _wake();
-      return;
-    }
-    setState(() => _tiltOn = true);
-    final request = ++_tiltRequest;
-    try {
-      final stream = await openDeviceTilt();
-      if (!mounted || request != _tiltRequest) return;
-      if (stream == null) {
-        _tiltUnavailable();
-        return;
-      }
-      _tiltTimeout = Timer(const Duration(seconds: 2), () {
-        if (mounted && request == _tiltRequest) _tiltUnavailable();
-      });
-      _sensor = stream.listen(
-        (axes) {
-          if (!mounted || request != _tiltRequest || !axes.isFinite) return;
-          _tiltTimeout?.cancel();
-          final neutral = _neutral ??= axes;
-          final change = axes - neutral;
-          final target =
-              Offset(change.dx.clamp(-.85, .85), change.dy.clamp(-.85, .85)) *
-              14;
-          final next = Offset.lerp(_gravity, target, .22)!;
-          if ((next - _gravity).distanceSquared < .0064) return;
-          _gravity = next;
-          _simulation.setGravity(next);
-          _wake();
-        },
-        onError: (Object error) {
-          if (mounted && request == _tiltRequest) _tiltUnavailable();
-        },
-      );
-    } catch (_) {
-      if (mounted && request == _tiltRequest) _tiltUnavailable();
-    }
-  }
-
-  void _release() {
-    if (!_grabbing) return;
-    _simulation.release();
-    setState(() => _grabbing = false);
-    _wake();
   }
 
   @override
@@ -176,7 +39,7 @@ class _LineStudioState extends State<LineStudio>
     final scope = AppScope.of(context);
     final strings = scope.strings;
     final palette = scope.palette;
-    final figure = _simulation.figure;
+    final figure = simulation.figure;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 392),
       child: Column(
@@ -196,29 +59,17 @@ class _LineStudioState extends State<LineStudio>
               ),
               const Spacer(),
               if (supportsDeviceTilt)
-                Semantics(
-                  toggled: _tiltOn,
-                  child: AppIconButton(
-                    key: const Key('line-studio-tilt'),
-                    icon: _tiltOn
-                        ? Icons.screen_rotation
-                        : Icons.screen_rotation_outlined,
-                    tooltip: _tiltOn ? strings.disableTilt : strings.enableTilt,
-                    size: 44,
-                    color: _tiltOn ? palette.lineInk : palette.lineInk2,
-                    onPressed: _reduced ? null : _toggleTilt,
-                  ),
-                ),
+                lineTiltButton(key: const Key('line-studio-tilt')),
               AppIconButton(
                 key: const Key('line-studio-tug'),
                 icon: Icons.gesture_outlined,
                 tooltip: strings.tugLines,
                 size: 44,
-                onPressed: _reduced
+                onPressed: reducedMotion
                     ? null
                     : () {
-                        _simulation.tug();
-                        _wake();
+                        simulation.tug();
+                        wakeLines();
                       },
               ),
             ],
@@ -232,43 +83,20 @@ class _LineStudioState extends State<LineStudio>
                 final drawing = RepaintBoundary(
                   child: CustomPaint(
                     key: const Key('line-studio-canvas'),
-                    painter: _LineDrawing(_simulation, palette, _repaint),
+                    painter: _LineDrawing(simulation, palette, lineRepaint),
                     child: const SizedBox.expand(),
                   ),
                 );
                 return Semantics(
                   image: true,
-                  label: _reduced ? strings.lineStudies : strings.dragLines,
-                  child: _reduced
-                      ? drawing
-                      : MouseRegion(
-                          cursor: _grabbing
-                              ? SystemMouseCursors.grabbing
-                              : SystemMouseCursors.grab,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            dragStartBehavior: DragStartBehavior.down,
-                            onPanStart: (details) {
-                              if (_simulation.grab(
-                                space.toWorld(details.localPosition),
-                                24 / space.scale,
-                              )) {
-                                setState(() => _grabbing = true);
-                                _wake();
-                              }
-                            },
-                            onPanUpdate: (details) {
-                              if (_grabbing) {
-                                _simulation.move(
-                                  space.toWorld(details.localPosition),
-                                );
-                              }
-                            },
-                            onPanEnd: (_) => _release(),
-                            onPanCancel: _release,
-                            child: drawing,
-                          ),
-                        ),
+                  label: reducedMotion
+                      ? strings.lineStudies
+                      : strings.dragLines,
+                  child: lineGestures(
+                    toWorld: space.toWorld,
+                    grabRadius: 24 / space.scale,
+                    child: drawing,
+                  ),
                 );
               },
             ),

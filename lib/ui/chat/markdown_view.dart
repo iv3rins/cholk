@@ -15,9 +15,13 @@ class MarkdownView extends StatefulWidget {
     required this.data,
     this.onCitation,
     this.onLink,
+    this.selectable = true,
   });
 
   final String data;
+
+  /// Inline selection; disabled on touch so the bubble's long-press menu wins.
+  final bool selectable;
   final void Function(int index)? onCitation;
   final void Function(String url)? onLink;
 
@@ -29,6 +33,7 @@ class _MarkdownViewState extends State<MarkdownView> {
   String? _cachedData;
   bool? _cachedDark;
   double? _cachedScale;
+  bool? _cachedSelectable;
   Widget? _cached;
 
   String _withCitationLinks(String source) {
@@ -45,9 +50,11 @@ class _MarkdownViewState extends State<MarkdownView> {
     if (_cached != null &&
         _cachedData == widget.data &&
         _cachedDark == palette.isDark &&
-        _cachedScale == scale) {
+        _cachedScale == scale &&
+        _cachedSelectable == widget.selectable) {
       return _cached!;
     }
+    _cachedSelectable = widget.selectable;
     _cachedData = widget.data;
     _cachedDark = palette.isDark;
     _cachedScale = scale;
@@ -131,7 +138,7 @@ class _MarkdownViewState extends State<MarkdownView> {
 
     _cached = MarkdownBody(
       data: _withCitationLinks(widget.data),
-      selectable: true,
+      selectable: widget.selectable,
       styleSheet: styleSheet,
       extensionSet: md.ExtensionSet.gitHubFlavored,
       builders: {

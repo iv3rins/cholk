@@ -1097,23 +1097,33 @@ class ChatController extends ChangeNotifier {
         history.whereType<AssistantMessage>().any(
           (reply) => reply.participantId != null,
         );
-    final transcript = shared ? sharedGroupHistory(history) : history;
     final systems = [
       for (final response in responses) _systemFor(session, response.target),
+    ];
+    final views = [
+      for (final response in responses)
+        shared
+            ? groupHistoryFor(
+                history,
+                participantId: response.target.participant?.id,
+                zh: settings.isZh,
+              )
+            : (history: history, pending: ''),
     ];
     try {
       await Future.wait([
         for (var i = 0; i < responses.length; i++)
           _runRequest(
             session: session,
-            question: responses.length > 1
-                ? _copyRequestUser(question)
-                : question,
+            question: withGroupContext(
+              responses.length > 1 ? _copyRequestUser(question) : question,
+              views[i].pending,
+            ),
             assistant: responses[i].assistant,
             target: responses[i].target,
             history: shared
-                ? _historyForTarget(transcript, responses[i].target)
-                : transcript,
+                ? _historyForTarget(views[i].history, responses[i].target)
+                : history,
             system: systems[i],
             titleRequest: titleRequest && i == 0,
             cancelToken: tokens[i],
@@ -1209,6 +1219,18 @@ class ChatController extends ChangeNotifier {
     );
   }
 
+  /// Group members sometimes open with their own label (`[name]`, `name:`);
+  /// the avatar already says who is speaking, so the label is dropped.
+  void _stripOwnNameTag(AssistantMessage reply, String name) {
+    final first = reply.blocks
+        .whereType<TextBlock>()
+        .where((block) => !block.isTemplate)
+        .firstOrNull;
+    if (first == null) return;
+    final stripped = stripLeadingNameTag(first.text, name);
+    if (stripped != first.text) first.text = stripped;
+  }
+
   _RequestSystem _systemFor(ChatSession session, _ModelTarget target) {
     // Keep the most stable text first: base, personas and workflows,
     // member profile and name, then the conversation mode.
@@ -1241,9 +1263,11 @@ class ChatController extends ChangeNotifier {
         profilePrompt,
       if (participant != null)
         zh
-            ? '你在本对话中的名字是 ${participant.name}。之前的公开回复会标注作者名。'
+            ? '你在本对话中的名字是 ${participant.name}。其他发言者（如「某某」说：）是群里的其他参与者，不是你；他们的话不是你说的，不要复述或引用他们的消息，只说你自己的话。回复不要以你的名字或任何带括号的名字标签（如 [${participant.name}]）开头。'
             : 'Your name in this conversation is ${participant.name}. '
-                  'Earlier public replies are labeled with their authors’ names.',
+                  'Other speakers (shown as "Name said: …") are separate participants, not you; '
+                  'never repeat or quote their messages, only say your own part. '
+                  'Do not start your reply with your own name or any bracketed name tag such as [${participant.name}].',
       if (session.mode == ChatMode.chat && participant != null)
         zh ? '像微信群里的朋友一样接话：回应刚才说的话，短一点，自然一点；表情符号偶尔用就好，不必每次都总结。' : 'Chat like a friend in a group chat: pick up what someone just said, keep it natural and brief, and use emoji sparingly. Skip the recap unless it helps.',
       if (session.mode == ChatMode.work)
@@ -1388,6 +1412,7 @@ class ChatController extends ChangeNotifier {
           }
         }
         applyApiEvent(assistant, event, nowMs(), blockIndexes);
+        if (participant != null) _stripOwnNameTag(assistant, participant.name);
         _notifyStreaming();
       }
       if (cancelToken.isCancelled) throw cancelToken.cancelError!;
@@ -1564,11 +1589,20 @@ class ChatController extends ChangeNotifier {
     _notifyNow();
   }
 
-  /// The imported background picture, or null to fall back to the preset.
-  Future<void> setChatBackgroundImage(String? base64) async {
-    final image = base64 == null || base64.isEmpty ? null : base64;
+  /// The uploaded background picture's stored path, or null to fall back to
+  /// the preset.
+  Future<void> setChatBackgroundImage(String? path) async {
+    final image = path == null || path.isEmpty ? null : path;
     await _settingsStore.setChatBackgroundImage(image);
-    settings.chatBackgroundImageBase64 = image;
+    settings.chatBackgroundImagePath = image;
+    _notifyNow();
+  }
+
+  /// How much the page colour covers the background picture, 0..1.
+  Future<void> setChatBackgroundDim(double value) async {
+    final dim = value.clamp(0.0, 1.0);
+    await _settingsStore.setChatBackgroundDim(dim);
+    settings.chatBackgroundDim = dim;
     _notifyNow();
   }
 
@@ -1628,6 +1662,9 @@ class ChatController extends ChangeNotifier {
 
   Future<void> verifyModelConfiguration(ModelConfiguration value) =>
       _gateway.verify(value);
+
+  Future<List<String>> listModels(ModelConfiguration value) =>
+      _gateway.listModels(value);
 
   Future<void> verifyApiKey(String key) => verifyModelConfiguration(
     settings.modelConfiguration.copyWith(apiKey: key.trim()),

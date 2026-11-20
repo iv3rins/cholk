@@ -325,6 +325,7 @@ class _ChatInputState extends State<ChatInput> {
               child: Focus(
                 onKeyEvent: (_, event) => _keyEvent(event, query, options),
                 child: TextField(
+                  scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
                   key: const Key('message-draft'),
                   controller: _text,
                   focusNode: _focus,

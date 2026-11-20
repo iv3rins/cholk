@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'app.dart';
 import 'demo/demo_data.dart';
 import 'models/model_configuration.dart';
 import 'state/chat_controller.dart';
+import 'ui/settings/disclaimer_dialog.dart';
 
 const bool _demoUi = bool.fromEnvironment('DEMO_UI');
 const String _testModel = String.fromEnvironment('TEST_OPENAI_MODEL');
@@ -26,6 +28,12 @@ String _demoProxyOrigin() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    // Draw behind the system bars so Android reports the keyboard as a view
+    // inset on every API level. Without this, some devices resize nothing and
+    // report no inset, and the keyboard covers the focused field.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   final controller = ChatController();
   await controller.init();
 
@@ -52,5 +60,9 @@ Future<void> main() async {
     }
   }
 
-  runApp(DeepSeekChatApp(controller: controller));
+  final preview = kIsWeb && (_demoUi || _testModel.isNotEmpty);
+  final showDisclaimer = !preview && !await disclaimerAccepted();
+  runApp(
+    DeepSeekChatApp(controller: controller, showDisclaimer: showDisclaimer),
+  );
 }

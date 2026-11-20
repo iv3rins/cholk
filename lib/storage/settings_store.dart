@@ -25,7 +25,8 @@ class SettingsStore {
   static const _kTtsVoice = 'deepseek_chat:tts-voice';
   static const _kPersona = 'deepseek_chat:persona';
   static const _kBackground = 'deepseek_chat:chat-background';
-  static const _kBackgroundImage = 'deepseek_chat:chat-background-image';
+  static const _kBackgroundImage = 'deepseek_chat:chat-background-image-path';
+  static const _kBackgroundDim = 'deepseek_chat:chat-background-dim';
   static const _kMemorySync = 'deepseek_chat:memory-sync';
   static const _kSystemPrompt = 'deepseek_chat:system-prompt';
   static const _kApiOrigin = 'deepseek_chat:api-origin';
@@ -77,10 +78,15 @@ class SettingsStore {
       ttsVoice: prefs.getString(_kTtsVoice) == 'tide' ? 'tide' : 'stella',
       personaId: prefs.getString(_kPersona) ?? 'default',
       chatBackground: ChatBackground.fromWire(prefs.getString(_kBackground)),
-      chatBackgroundImageBase64: switch (prefs.getString(_kBackgroundImage)) {
+      chatBackgroundImagePath: switch (prefs.getString(_kBackgroundImage)) {
         final image? when image.isNotEmpty => image,
         _ => null,
       },
+      chatBackgroundDim:
+          (prefs.getDouble(_kBackgroundDim) ?? defaultChatBackgroundDim).clamp(
+            0.0,
+            1.0,
+          ),
       memorySync: prefs.getBool(_kMemorySync) ?? false,
       systemPromptOverride: prefs.getString(_kSystemPrompt) ?? '',
       apiOrigin: origin != null && origin.trim().isNotEmpty
@@ -216,13 +222,20 @@ class SettingsStore {
 
   /// Removes the key rather than storing an empty string, so "no picture" reads
   /// back as null and the preset background applies again.
-  Future<void> setChatBackgroundImage(String? base64) async {
-    if (base64 == null || base64.isEmpty) {
+  Future<void> setChatBackgroundImage(String? path) async {
+    if (path == null || path.isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kBackgroundImage);
       return;
     }
-    await _saveString(_kBackgroundImage, base64);
+    await _saveString(_kBackgroundImage, path);
+  }
+
+  Future<void> setChatBackgroundDim(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setDouble(_kBackgroundDim, value)) {
+      throw StateError('Could not save preference: $_kBackgroundDim');
+    }
   }
 
   Future<void> setMemorySync(bool value) async {

@@ -164,6 +164,7 @@ class _ServerAccountSectionState extends State<ServerAccountSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
+          scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
           key: const Key('server-address'),
           controller: _address,
           enabled: !_busy && !signedIn,
@@ -206,6 +207,7 @@ class _ServerAccountSectionState extends State<ServerAccountSection> {
           ),
         ] else ...[
           TextField(
+            scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
             key: const Key('account-username'),
             controller: _username,
             enabled: !_busy,
@@ -214,6 +216,7 @@ class _ServerAccountSectionState extends State<ServerAccountSection> {
           ),
           const SizedBox(height: 10),
           TextField(
+            scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
             key: const Key('account-password'),
             controller: _password,
             enabled: !_busy,

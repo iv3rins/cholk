@@ -1,12 +1,15 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../app_scope.dart';
+import '../../i18n/strings_background.dart';
+import '../../i18n/strings_notice.dart';
 import '../../models/model_configuration.dart';
 import '../../theme/app_theme.dart';
 import 'chat_background_settings.dart';
 import '../common.dart';
 import '../persona/persona_page.dart';
 import 'advanced_api_dialog.dart';
+import 'disclaimer_dialog.dart';
 import 'prompt_editor.dart';
 import 'server_account_section.dart';
 import 'settings_frame.dart';
@@ -206,12 +209,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ),
           const SizedBox(height: 22),
           SettingsSectionTitle(strings.chatBackground),
-          const ChatBackgroundChoices(),
+          OutlinedButton.icon(
+            key: const Key('settings-chat-background'),
+            onPressed: () => showChatBackgrounds(context),
+            icon: const Icon(Icons.wallpaper_outlined),
+            label: Text(
+              '${strings.chatBackground} · ${strings.uploadBackground}',
+            ),
+          ),
           const SizedBox(height: 8),
           Text(strings.preferencesSavedImmediately, style: helperStyle),
           const SizedBox(height: 26),
           TextField(
             key: const Key('settings-location'),
+            scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
             controller: _location,
             enabled: !_savingLocation,
             onSubmitted: (_) => _saveLocation(),
@@ -242,6 +253,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 size: 18,
               ),
               label: Text(strings.deleteAllChats),
+            ),
+          ),          const SizedBox(height: 18),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('settings-disclaimer'),
+              onPressed: () => showDisclaimer(context),
+              icon: const Icon(Icons.info_outline, size: 18),
+              label: Text(strings.disclaimerTitle),
             ),
           ),
           if (_error != null) ...[

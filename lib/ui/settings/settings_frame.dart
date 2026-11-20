@@ -22,8 +22,13 @@ class SettingsFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
+    // While the keyboard is open every pixel above it goes to the form.
+    final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: typing ? 8 : 24,
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560, maxHeight: 740),
         child: Column(
@@ -55,13 +60,15 @@ class SettingsFrame extends StatelessWidget {
             Divider(height: Lineism.hair, color: scope.palette.lineRule),
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(22, typing ? 12 : 20, 22, 22),
                 child: body,
               ),
             ),
             Divider(height: Lineism.hair, color: scope.palette.lineRule),
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
+              padding: EdgeInsets.fromLTRB(22, typing ? 6 : 12, 22, typing ? 8 : 16),
               child: Wrap(
                 alignment: WrapAlignment.end,
                 spacing: 10,

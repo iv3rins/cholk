@@ -3,6 +3,7 @@ import 'chat_preferences.dart';
 import 'model_configuration.dart';
 
 const defaultAccountOrigin = String.fromEnvironment('ACCOUNT_ORIGIN');
+const defaultChatBackgroundDim = .45;
 
 /// User preferences are independent of how they are stored or sent over HTTP.
 class AppSettings {
@@ -19,7 +20,8 @@ class AppSettings {
     this.ttsVoice = 'stella',
     this.personaId = 'default',
     this.chatBackground = ChatBackground.plain,
-    this.chatBackgroundImageBase64,
+    this.chatBackgroundImagePath,
+    this.chatBackgroundDim = defaultChatBackgroundDim,
     this.memorySync = false,
     this.systemPromptOverride = '',
     this.apiOrigin = defaultApiOrigin,
@@ -44,10 +46,14 @@ class AppSettings {
   String personaId;
   ChatBackground chatBackground;
 
-  /// The imported background picture as base64 bytes, or null for no picture.
-  /// It lives beside [chatBackground] rather than replacing it, so the tiled
-  /// presets stay available when no picture is set.
-  String? chatBackgroundImageBase64;
+  /// The uploaded background picture, copied into the app documents directory,
+  /// or null for no picture. It lives beside [chatBackground] rather than
+  /// replacing it, so the tiled presets stay available when no picture is set.
+  String? chatBackgroundImagePath;
+
+  /// How strongly the page colour covers the picture (0 = picture at full
+  /// strength, 1 = picture hidden), so message text stays readable.
+  double chatBackgroundDim;
 
   /// Lets chat conversations share what they remember across sessions.
   bool memorySync;

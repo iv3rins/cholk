@@ -1,9 +1,13 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../app_scope.dart';
+import '../../i18n/strings_models.dart';
 import '../../models/model_configuration.dart';
 import '../../theme/app_theme.dart';
 import 'settings_frame.dart';
+
+/// Keeps a focused field fully above the keyboard inside the settings dialog.
+const _fieldScrollPadding = EdgeInsets.fromLTRB(20, 20, 20, 96);
 
 /// Shared API draft form for the main connection and individual participants.
 class ModelConfigurationFields extends StatefulWidget {
@@ -34,6 +38,7 @@ class ModelConfigurationFieldsState extends State<ModelConfigurationFields> {
   bool _audio = false;
   bool _obscure = true;
   bool _verifying = false;
+  bool _fetching = false;
   int _revision = 0;
   String? _status;
 
@@ -111,6 +116,52 @@ class ModelConfigurationFieldsState extends State<ModelConfigurationFields> {
     }
   }
 
+  Future<void> _fetchModels() async {
+    if (_fetching) return;
+    final scope = AppScope.of(context);
+    final strings = scope.strings;
+    final configuration = draft;
+    try {
+      configuration.copyWith(model: '-').validated();
+    } on FormatException {
+      setState(
+        () => _status = configuration.apiKey.isEmpty
+            ? strings.apiKeyRequired
+            : strings.apiUrlInvalid,
+      );
+      return;
+    }
+    final revision = _revision;
+    setState(() {
+      _fetching = true;
+      _status = strings.fetchingModels;
+    });
+    List<String> models;
+    String? failure;
+    try {
+      models = await scope.controller.listModels(configuration);
+    } catch (_) {
+      models = const [];
+      failure = strings.fetchModelsFailed;
+    }
+    if (!mounted) return;
+    setState(() {
+      _fetching = false;
+      if (revision == _revision) {
+        _status = failure ?? (models.isEmpty ? strings.noModelsFound : null);
+      }
+    });
+    if (models.isEmpty || revision != _revision) return;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _ModelPicker(models: models, current: _model.text),
+    );
+    if (picked == null || !mounted) return;
+    _model.text = picked;
+    _draftChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
@@ -157,6 +208,7 @@ class ModelConfigurationFieldsState extends State<ModelConfigurationFields> {
             onChanged: (_) => _draftChanged(),
             autocorrect: false,
             keyboardType: TextInputType.url,
+            scrollPadding: _fieldScrollPadding,
             decoration: InputDecoration(
               labelText: strings.apiOrigin,
               helperText: strings.apiBaseUrlHelp,
@@ -184,6 +236,7 @@ class ModelConfigurationFieldsState extends State<ModelConfigurationFields> {
             enabled: widget.enabled,
             onChanged: (_) => _draftChanged(),
             obscureText: _obscure,
+            scrollPadding: _fieldScrollPadding,
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
@@ -213,9 +266,24 @@ class ModelConfigurationFieldsState extends State<ModelConfigurationFields> {
             enabled: widget.enabled,
             onChanged: (_) => _draftChanged(),
             autocorrect: false,
+            scrollPadding: _fieldScrollPadding,
             decoration: InputDecoration(
               labelText: strings.modelName,
               errorStyle: TextStyle(color: palette.lineInk),
+              suffixIcon: _fetching
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : IconButton(
+                      key: const Key('api-fetch-models'),
+                      tooltip: strings.fetchModels,
+                      onPressed: widget.enabled ? _fetchModels : null,
+                      icon: const Icon(Icons.format_list_bulleted),
+                    ),
             ),
             validator: (value) => value == null || value.trim().isEmpty
                 ? strings.modelNameRequired
@@ -283,6 +351,79 @@ class ModelConfigurationFieldsState extends State<ModelConfigurationFields> {
           ] else
             Text(strings.deepseekInputDescription, style: helperStyle),
         ],
+      ),
+    );
+  }
+}
+
+/// Searchable model list; pops with the chosen ID.
+class _ModelPicker extends StatefulWidget {
+  const _ModelPicker({required this.models, required this.current});
+
+  final List<String> models;
+  final String current;
+
+  @override
+  State<_ModelPicker> createState() => _ModelPickerState();
+}
+
+class _ModelPickerState extends State<_ModelPicker> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppScope.of(context).strings;
+    final query = _query.trim().toLowerCase();
+    final visible = [
+      for (final id in widget.models)
+        if (id.toLowerCase().contains(query)) id,
+    ];
+    final media = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: media.size.height * 0.7),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                strings.chooseModel,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: TextField(
+                key: const Key('api-models-filter'),
+                scrollPadding: _fieldScrollPadding,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: strings.filterModels,
+                  prefixIcon: const Icon(Icons.search),
+                ),
+                onChanged: (value) => setState(() => _query = value),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: visible.length,
+                itemBuilder: (context, index) {
+                  final id = visible[index];
+                  return ListTile(
+                    title: Text(id),
+                    selected: id == widget.current.trim(),
+                    onTap: () => Navigator.of(context).pop(id),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

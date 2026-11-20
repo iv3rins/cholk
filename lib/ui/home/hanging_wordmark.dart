@@ -5,7 +5,13 @@ import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/lineism.dart';
+import 'motion/device_tilt.dart';
+import 'motion/line_motion.dart';
+import 'motion/line_simulation.dart';
 
+/// The CHOLK letters hang on cords from the top edge. The cords are the same
+/// line simulation as the Project page's line studies: drag a letter or a cord
+/// to pull it, and opt into device tilt to let gravity swing them.
 class HangingWordmark extends StatefulWidget {
   const HangingWordmark({super.key});
 
@@ -14,44 +20,48 @@ class HangingWordmark extends StatefulWidget {
 }
 
 class _HangingWordmarkState extends State<HangingWordmark>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, LineMotion<HangingWordmark> {
   late final _entrance = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2900),
-  );
-  late final _touch = AnimationController(
-    vsync: this,
-    value: 1,
-    duration: const Duration(milliseconds: 2100),
-  );
+  )..addListener(_letGo);
   bool _started = false;
-  bool _still = false;
-  double _touchX = .5;
+  bool _released = false;
+  double _ceiling = _WordmarkSpace.restCeiling;
+
+  @override
+  LineSimulation buildSimulation() => _WordmarkSpace.simulation(_ceiling);
+
+  @override
+  bool get linesGrabbable => _entrance.value >= .35;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _still = MediaQuery.disableAnimationsOf(context);
-    if (_still) {
-      _entrance.value = _touch.value = 1;
+    if (reducedMotion) {
+      _entrance.value = 1;
     } else if (!_started) {
       _entrance.forward();
     }
     _started = true;
   }
 
-  void _nudge(Offset position) {
-    if (_still || _touch.isAnimating || _entrance.value < .35) return;
-    final width = context.size!.width;
-    if (width <= 0) return;
-    setState(() => _touchX = (position.dx / width).clamp(0, 1));
-    _touch.forward(from: 0);
+  /// Once the letters land, a small alternating push sets them swinging.
+  void _letGo() {
+    if (_released || reducedMotion || _entrance.value < .34) return;
+    _released = true;
+    for (var i = 0; i < _letters.length; i++) {
+      simulation.push(
+        simulation.strandBody(i),
+        Offset(i.isEven ? .3 : -.3, 0),
+      );
+    }
+    wakeLines();
   }
 
   @override
   void dispose() {
     _entrance.dispose();
-    _touch.dispose();
     super.dispose();
   }
 
@@ -61,26 +71,120 @@ class _HangingWordmarkState extends State<HangingWordmark>
     return Semantics(
       header: true,
       label: 'CHOLK',
-      child: MouseRegion(
-        onEnter: (event) => _nudge(event.localPosition),
-        child: Listener(
-          onPointerDown: (event) => _nudge(event.localPosition),
-          behavior: HitTestBehavior.translucent,
-          child: RepaintBoundary(
-            child: CustomPaint(
-              painter: _WordmarkPainter(
-                ink: palette.lineInk,
-                thread: palette.lineInk2,
-                drum: palette.accent,
-                entrance: _entrance,
-                touch: _touch,
-                touchX: _touchX,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final space = _WordmarkSpace(constraints.biggest);
+          // The cords hang from the top edge, so their length follows the
+          // stage height.
+          if ((space.ceiling - _ceiling).abs() > .5) {
+            _ceiling = space.ceiling;
+            replaceSimulation(buildSimulation());
+          }
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: lineGestures(
+                  toWorld: space.toWorld,
+                  grabRadius: _WordmarkSpace.grabRadius,
+                  // Only the letters and cords take a drag; the rest of the
+                  // stage still scrolls the page.
+                  behavior: HitTestBehavior.deferToChild,
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      key: const Key('wordmark-canvas'),
+                      painter: _WordmarkPainter(
+                        ink: palette.lineInk,
+                        thread: palette.lineInk2,
+                        drum: palette.accent,
+                        entrance: _entrance,
+                        simulation: simulation,
+                        space: space,
+                        repaint: lineRepaint,
+                        grabbable: () => !reducedMotion && linesGrabbable,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
               ),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ),
+              if (supportsDeviceTilt && !reducedMotion)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: lineTiltButton(
+                    key: const Key('wordmark-tilt'),
+                    size: 36,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
+    );
+  }
+}
+
+/// Maps the drawing (536 x 198 units, letters from y = 0) onto the stage, and
+/// one simulation unit onto 100 drawing units.
+class _WordmarkSpace {
+  factory _WordmarkSpace(Size size) {
+    final scale = math.min(size.width / 536, size.height / 198);
+    return _WordmarkSpace._(
+      scale,
+      Offset((size.width - 516 * scale) / 2, size.height * .94 - 128 * scale),
+    );
+  }
+
+  const _WordmarkSpace._(this.scale, this.origin);
+
+  static const unit = 100.0;
+  static const grabRadius = .4;
+  static const restCeiling = 198 * .94 - 128;
+
+  final double scale;
+  final Offset origin;
+
+  /// Distance from the top edge down to the letter row, in drawing units.
+  double get ceiling => scale <= 0 ? restCeiling : origin.dy / scale;
+
+  Offset toScreen(Offset world) => origin + world * (unit * scale);
+  Offset toWorld(Offset screen) =>
+      scale <= 0 ? Offset.zero : (screen - origin) / (unit * scale);
+
+  static LineSimulation simulation(double ceiling) {
+    const cordNodes = 6;
+    Offset bezier(Offset a, Offset b, Offset c, double t) =>
+        a * ((1 - t) * (1 - t)) + b * (2 * (1 - t) * t) + c * (t * t);
+    return LineSimulation(
+      LineFigure.strands,
+      bounds: Rect.fromLTRB(-.2, -ceiling / unit, 5.36, 1.6),
+      strands: [
+        for (final letter in _letters)
+          () {
+            final eye = Offset(
+              letter.x + letter.eye.dx,
+              letter.level + letter.eye.dy,
+            );
+            final root = Offset(eye.dx + letter.lean, -ceiling);
+            final control = Offset(
+              (root.dx + eye.dx) / 2 + letter.lean,
+              -ceiling + (ceiling + eye.dy) * .52,
+            );
+            final center = letter.cut.getBounds().center - letter.eye;
+            final cos = math.cos(letter.tilt), sin = math.sin(letter.tilt);
+            final body = Offset(
+              center.dx * cos - center.dy * sin,
+              center.dx * sin + center.dy * cos,
+            );
+            return (
+              cord: [
+                for (var k = 0; k < cordNodes; k++)
+                  bezier(root, control, eye, k / (cordNodes - 1)) / unit,
+              ],
+              body: (eye + body) / unit,
+            );
+          }(),
+      ],
     );
   }
 }
@@ -91,63 +195,66 @@ class _WordmarkPainter extends CustomPainter {
     required this.thread,
     required this.drum,
     required this.entrance,
-    required this.touch,
-    required this.touchX,
-  }) : super(repaint: Listenable.merge([entrance, touch]));
+    required this.simulation,
+    required this.space,
+    required Listenable repaint,
+    required this.grabbable,
+  }) : super(repaint: Listenable.merge([entrance, repaint]));
 
   final Color ink, thread, drum;
-  final Animation<double> entrance, touch;
-  final double touchX;
+  final Animation<double> entrance;
+  final LineSimulation simulation;
+  final _WordmarkSpace space;
+  final bool Function() grabbable;
+
+  @override
+  bool hitTest(Offset position) =>
+      grabbable() &&
+      simulation.canGrab(space.toWorld(position), _WordmarkSpace.grabRadius);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    const drawingWidth = 516.0;
-    final scale = math.min(size.width / 536, size.height / 198);
-    final left = (size.width - drawingWidth * scale) / 2;
-    final top = size.height * .94 - 128 * scale;
     final line = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = Lineism.hair
       ..strokeCap = StrokeCap.round
       ..color = thread;
     final print = Paint();
+    Offset at(int node) => space.toScreen(simulation.position(node));
     for (var i = 0; i < _letters.length; i++) {
       final letter = _letters[i];
-      final pinX = left + (letter.x + letter.eye.dx) * scale;
-      final drop = top + (letter.level + letter.eye.dy) * scale;
-      final rootX = pinX + letter.lean * scale;
+      final start = simulation.strandStart(i);
+      final body = simulation.strandBody(i);
+      final eye = body - 1;
       final t = entrance.value - i * .008;
       final grow = Curves.easeInOutCubic.transform((t / .34).clamp(0, 1));
       final reveal = Curves.easeOut.transform(((t - .34) / .18).clamp(0, 1));
-      final release = ((t - .34) / (.66 - i * .008)).clamp(0.0, 1.0);
-      final distance = (pinX / size.width - touchX).abs();
-      final angle =
-          _swing(release, i) * .024 * (i.isEven ? 1 : -1) +
-          _swing(touch.value, i) *
-              (.038 / (1 + 9 * distance)) *
-              (touchX < pinX / size.width ? -1 : 1);
-      final end = Offset(pinX - drop * math.sin(angle), drop * math.cos(angle));
-      final root = Offset(rootX, 0);
-      final control = Offset(
-        (rootX + end.dx) / 2 + letter.lean * scale,
-        drop * .52,
-      );
-      // Grow the cord along its own curve, without moving its fixed ceiling pin.
-      final a = Offset.lerp(root, control, grow)!;
-      final b = Offset.lerp(control, end, grow)!;
-      final tip = Offset.lerp(a, b, grow)!;
-      canvas.drawPath(
-        Path()
-          ..moveTo(root.dx, 0)
-          ..quadraticBezierTo(a.dx, a.dy, tip.dx, tip.dy),
-        line,
-      );
+      if (grow == 0) continue;
+      final pin = at(start);
+      var cord = Path()..moveTo(pin.dx, pin.dy);
+      for (var n = start + 1; n < eye; n++) {
+        final p = at(n);
+        final mid = Offset.lerp(p, at(n + 1), .5)!;
+        cord.quadraticBezierTo(p.dx, p.dy, mid.dx, mid.dy);
+      }
+      final end = at(eye);
+      cord.lineTo(end.dx, end.dy);
+      if (grow < 1) {
+        // Grow the cord along its own curve from its fixed ceiling pin.
+        final metric = cord.computeMetrics().first;
+        cord = metric.extractPath(0, metric.length * grow);
+      }
+      canvas.drawPath(cord, line);
       if (reveal == 0) continue;
+      final turn =
+          (simulation.position(body) - simulation.position(eye)).direction -
+          (simulation.rest(body) - simulation.rest(eye)).direction;
+      final angle = math.atan2(math.sin(turn), math.cos(turn));
       canvas.save();
       canvas.translate(end.dx, end.dy);
       canvas.rotate(letter.tilt + angle);
-      canvas.scale(scale);
+      canvas.scale(space.scale);
       canvas.translate(-letter.eye.dx, -letter.eye.dy);
       // Second drum, slightly off register; it settles as the letter lands.
       final slip = 5.5 + 6 * (1 - reveal);
@@ -168,18 +275,15 @@ class _WordmarkPainter extends CustomPainter {
     }
   }
 
-  static double _swing(double t, int i) => t == 1
-      ? 0
-      : math.sin(t * (15.2 + i * .63)) * math.exp(-4.2 * t) * (1 - t);
-
   @override
   bool shouldRepaint(_WordmarkPainter old) =>
       ink != old.ink ||
       thread != old.thread ||
       drum != old.drum ||
-      touchX != old.touchX ||
       entrance != old.entrance ||
-      touch != old.touch;
+      simulation != old.simulation ||
+      space.scale != old.space.scale ||
+      space.origin != old.space.origin;
 }
 
 // Each silhouette has its own knife-cut outline. The counters and the reversed

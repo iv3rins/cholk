@@ -9,6 +9,7 @@ import '../../state/chat_controller.dart';
 import '../../theme/lineism.dart';
 import 'chat_view.dart';
 import '../common.dart';
+import '../settings/chat_background_settings.dart';
 import '../settings/settings_dialog.dart';
 import 'sider.dart';
 
@@ -247,6 +248,14 @@ class _MobileHeader extends StatelessWidget {
             ),
           ),
           AppIconButton(
+            key: const Key('mobile-chat-background'),
+            icon: Icons.wallpaper_outlined,
+            tooltip: scope.strings.chatBackground,
+            onPressed: () => showChatBackgrounds(context),
+            size: 48,
+            iconSize: 19,
+          ),
+          AppIconButton(
             icon: Icons.home_outlined,
             tooltip: scope.strings.backToHome,
             onPressed: onHome,
@@ -309,6 +318,14 @@ class _CollapsedRail extends StatelessWidget {
             iconSize: 20,
           ),
           const Spacer(),
+          AppIconButton(
+            key: const Key('rail-chat-background'),
+            icon: Icons.wallpaper_outlined,
+            tooltip: scope.strings.chatBackground,
+            onPressed: () => showChatBackgrounds(context),
+            size: 36,
+          ),
+          const SizedBox(height: 4),
           AppIconButton(
             icon: Icons.settings_outlined,
             tooltip: scope.strings.settings,

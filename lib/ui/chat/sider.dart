@@ -180,6 +180,7 @@ class Sider extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: Text(scope.strings.rename),
         content: TextField(
+          scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
           controller: textController,
           autofocus: true,
           decoration: InputDecoration(hintText: scope.strings.renameHint),

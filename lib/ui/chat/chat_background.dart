@@ -4,6 +4,7 @@ import '../../models/chat_preferences.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/lineism.dart';
 import '../app_scope.dart';
+import 'background_image.dart';
 
 class ChatPaper extends StatelessWidget {
   const ChatPaper({super.key, required this.option, this.sample = false});
@@ -13,7 +14,33 @@ class ChatPaper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppScope.of(context).palette;
+    final scope = AppScope.of(context);
+    final palette = scope.palette;
+    final imagePath = sample
+        ? null
+        : scope.controller.settings.chatBackgroundImagePath;
+    if (imagePath != null) {
+      // An uploaded picture replaces the preset; the page colour laid over it
+      // at the chosen strength keeps message text readable.
+      return IgnorePointer(
+        child: RepaintBoundary(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              BackgroundImage(
+                key: const Key('chat-background-image'),
+                path: imagePath,
+              ),
+              ColoredBox(
+                color: palette.background.withValues(
+                  alpha: scope.controller.settings.chatBackgroundDim,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(

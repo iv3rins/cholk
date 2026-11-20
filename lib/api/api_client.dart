@@ -10,6 +10,21 @@ import 'package:http_parser/http_parser.dart';
 import 'api_types.dart';
 import 'sse.dart';
 
+/// Extracts `data[].id` strings from a /models response, de-duplicated and
+/// sorted. Anything else in the payload is ignored.
+List<String> parseModelIds(Object? json) {
+  final data = json is Map ? json['data'] : null;
+  if (data is! List) return const [];
+  final ids = <String>{
+    for (final item in data)
+      if (item is Map &&
+          item['id'] is String &&
+          (item['id'] as String).trim().isNotEmpty)
+        (item['id'] as String).trim(),
+  };
+  return ids.toList()..sort();
+}
+
 class ApiClient {
   ApiClient({this._origin = defaultApiOrigin, Dio? dio})
     : _useFetch = kIsWeb && dio == null,
@@ -55,7 +70,16 @@ class ApiClient {
       {'x-api-key': apiKey, if (files) 'anthropic-beta': filesBeta};
 
   /// Validates the key with GET /models, which does not consume tokens.
-  Future<void> verifyApiKey(String apiKey, {CancelToken? cancelToken}) async {
+  Future<void> verifyApiKey(String apiKey, {CancelToken? cancelToken}) =>
+      _getModels(apiKey, cancelToken: cancelToken);
+
+  /// Returns the sorted, de-duplicated model IDs from GET /models.
+  Future<List<String>> listModels(
+    String apiKey, {
+    CancelToken? cancelToken,
+  }) async => parseModelIds(await _getModels(apiKey, cancelToken: cancelToken));
+
+  Future<Object?> _getModels(String apiKey, {CancelToken? cancelToken}) async {
     final response = await _guard(
       () => _dio.getUri<dynamic>(
         _uri('/models'),
@@ -76,6 +100,7 @@ class ApiClient {
     if (response.data is! Map || (response.data as Map)['data'] is! List) {
       throw ApiException('protocol', 'Expected a model list response');
     }
+    return response.data;
   }
 
   Future<UploadedFile> uploadFile({
